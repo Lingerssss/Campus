@@ -90,6 +90,23 @@ export default function Login() {
 
     const handleGoogleLogin = () => {
         setIsSubmitting(true);
+        setError(''); // 清除之前的错误
+
+        // 标记是否收到了认证结果消息
+        let receivedAuthResult = false;
+
+        // 临时消息处理器，用于检测是否收到了认证结果
+        const tempMessageHandler = (event) => {
+            if (event.origin !== API_BASE_URL.replace('/api', '')) {
+                return;
+            }
+            if (event.data.type === 'GOOGLE_AUTH_SUCCESS' || event.data.type === 'GOOGLE_AUTH_ERROR') {
+                receivedAuthResult = true;
+            }
+        };
+
+        // 添加临时消息监听器
+        window.addEventListener('message', tempMessageHandler);
 
         // 打开弹窗进行Google OAuth认证
         const popup = window.open(
@@ -102,6 +119,7 @@ export default function Login() {
         if (!popup) {
             setError('Popup blocked. Please allow popups for this site.');
             setIsSubmitting(false);
+            window.removeEventListener('message', tempMessageHandler);
             return;
         }
 
@@ -109,13 +127,15 @@ export default function Login() {
         const checkClosed = setInterval(() => {
             if (popup.closed) {
                 clearInterval(checkClosed);
+                window.removeEventListener('message', tempMessageHandler);
                 setIsSubmitting(false);
-                // 弹窗关闭时，尝试刷新用户状态
-                // 这里可以添加一个延迟检查，看是否有新的认证状态
-                setTimeout(() => {
-                    // 可以调用一个检查用户状态的函数
-                    checkUserStatus();
-                }, 500);
+                
+                // 只有在没有收到认证结果消息的情况下才检查用户状态
+                if (!receivedAuthResult) {
+                    setTimeout(() => {
+                        checkUserStatus();
+                    }, 500);
+                }
             }
         }, 1000);
     };
