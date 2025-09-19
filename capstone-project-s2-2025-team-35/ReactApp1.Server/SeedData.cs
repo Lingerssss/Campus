@@ -15,6 +15,7 @@ namespace ReactApp1.Server
             const int ORG1 = 1;
             const int ORG2 = 2;
             const int ORG3 = 3;  // Gmail organizer
+            const int ORG4 = 7;  // dovejiaxi@gmail.com organizer
             const int STU1 = 4;
             const int STU2 = 5;
             const int STU3 = 6;
@@ -24,6 +25,7 @@ namespace ReactApp1.Server
                 new User { Id = ORG1, GoogleId="google_org_1",  Email="bernies2018@gmail.com",  Username="Bernies Wu", Role=UserRole.Organizer },
                 new User { Id = ORG2, GoogleId="google_org_2",  Email="organizer2@aucklanduni.ac.nz", Username="Prof. Mike Chen",   Role=UserRole.Organizer },
                 new User { Id = ORG3, GoogleId="google_org_3",  Email="dove@gmail.com", Username="Dove", Role=UserRole.Organizer },
+                new User { Id = ORG4, GoogleId="google_org_4",  Email="dovejiaxi@gmail.com", Username="Dove Jiaxi", Role=UserRole.Organizer },
                 new User { Id = STU1, GoogleId="google_student_1", Email="john.doe@aucklanduni.ac.nz",  Username="John Doe",   Role=UserRole.Student },
                 new User { Id = STU2, GoogleId="google_student_2", Email="jane.smith@aucklanduni.ac.nz", Username="Jane Smith", Role=UserRole.Student },
                 new User { Id = STU3, GoogleId="google_student_3", Email="bob.wilson@aucklanduni.ac.nz", Username="Bob Wilson", Role=UserRole.Student },

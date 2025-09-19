@@ -2,9 +2,10 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Google;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using ReactApp1.Server.Data;
+using ReactApp1.Server.DTOs;
 using ReactApp1.Server.Model;
+using ReactApp1.Server.Services;
 
 namespace ReactApp1.Server.Controllers;
 
@@ -12,15 +13,22 @@ namespace ReactApp1.Server.Controllers;
 [Route("api/auth")]
 public class AuthController : ControllerBase
 {
-    private readonly EventDbContext _db;
-    private readonly ILogger<AuthController> _logger;
+    private readonly IAuthService _authService;
     private readonly IUserRepository _userRepository;
+    private readonly ILogger<AuthController> _logger;
+    private readonly IConfiguration _configuration;
 
-    public AuthController(EventDbContext db, ILogger<AuthController> logger, IUserRepository userRepository)
+    public AuthController(IAuthService authService, IUserRepository userRepository, ILogger<AuthController> logger, IConfiguration configuration)
     {
-        _db = db;
-        _logger = logger;
+        _authService = authService;
         _userRepository = userRepository;
+        _logger = logger;
+        _configuration = configuration;
+    }
+
+    private string GetFrontendUrl()
+    {
+        return _configuration["Frontend:BaseUrl"] ?? "http://localhost:5173";
     }
 
 
@@ -64,7 +72,15 @@ public class AuthController : ControllerBase
             if (!auth.Succeeded)
             {
                 _logger.LogWarning("Google authentication failed");
-                return Redirect($"http://localhost:5173/login?error=google_failed");
+                return Content($@"
+                    <script>
+                        window.opener.postMessage({{
+                            type: 'GOOGLE_AUTH_ERROR',
+                            error: 'google_failed',
+                            message: 'Google authentication failed'
+                        }}, '{GetFrontendUrl()}');
+                        window.close();
+                    </script>", "text/html");
             }
 
             // 获取Google用户信息
@@ -75,48 +91,32 @@ public class AuthController : ControllerBase
             if (string.IsNullOrEmpty(email) || string.IsNullOrEmpty(googleId))
             {
                 _logger.LogError("Missing email or Google ID from authentication");
-                return Redirect($"http://localhost:5173/login?error=missing_info");
+                return Content($@"
+                    <script>
+                        window.opener.postMessage({{
+                            type: 'GOOGLE_AUTH_ERROR',
+                            error: 'missing_info',
+                            message: 'Missing information from Google'
+                        }}, '{GetFrontendUrl()}');
+                        window.close();
+                    </script>", "text/html");
             }
 
-            // 查找或创建用户（内部会处理邮箱验证逻辑）
-            var (user, isNewUser) = await FindOrCreateUser(email, name, googleId);
-
-            if (user == null)
-            {
-                _logger.LogError("Failed to find or create user for email: {Email}", email);
-                return Redirect($"http://localhost:5173/login?error=user_creation_failed");
-            }
+            // 处理用户登录（查找或创建用户）
+            var (user, isNewUser) = await _authService.ProcessUserLoginAsync(email, name, googleId);
 
             // 更新最后登录时间
             await _userRepository.UpdateLastLoginAsync(user.Id);
 
-            // 设置Cookie认证，使用数据库的userId作为NameIdentifier
-            var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(ClaimTypes.Name, user.Username),
-                new Claim(ClaimTypes.Email, user.Email),
-                new Claim(ClaimTypes.Role, user.Role.ToString()),
-                new Claim("ProfilePictureUrl", user.ProfilePictureUrl ?? "")
-            };
-
+            // 设置Cookie认证
+            var claims = _authService.CreateUserClaims(user);
             var claimsIdentity = new ClaimsIdentity(claims, "MyAuthentication");
             var claimsPrincipal = new ClaimsPrincipal(claimsIdentity);
 
             await HttpContext.SignInAsync("MyAuthentication", claimsPrincipal);
 
             // 生成前端需要的用户信息
-            var userInfo = new
-            {
-                id = user.Id,
-                email = user.Email,
-                username = user.Username,
-                role = user.Role,
-                googleId = user.GoogleId,
-                isFirstLogin = isNewUser
-            };
-
-            // 将用户信息传递给前端
+            var userInfo = _authService.CreateUserInfo(user, isNewUser);
             var userJson = System.Text.Json.JsonSerializer.Serialize(userInfo);
 
             return Content($@"
@@ -128,52 +128,32 @@ public class AuthController : ControllerBase
                     window.close();
                 </script>", "text/html");
         }
+        catch (InvalidOperationException ex) when (ex.Message.Contains("@aucklanduni.ac.nz"))
+        {
+            _logger.LogWarning("Invalid email domain: {Message}", ex.Message);
+            return Content($@"
+                <script>
+                    window.opener.postMessage({{
+                        type: 'GOOGLE_AUTH_ERROR',
+                        error: 'user_creation_failed',
+                        message: 'Invalid email domain. Please use @aucklanduni.ac.nz email.'
+                    }}, 'http://localhost:5173');
+                    window.close();
+                </script>", "text/html");
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during Google callback");
-            return Redirect($"http://localhost:5173/login?error=callback_error");
+            return Content($@"
+                <script>
+                    window.opener.postMessage({{
+                        type: 'GOOGLE_AUTH_ERROR',
+                        error: 'callback_error',
+                        message: 'An error occurred during authentication'
+                    }}, 'http://localhost:5173');
+                    window.close();
+                </script>", "text/html");
         }
     }
 
-    private async Task<(User?, bool isNewUser)> FindOrCreateUser(string email, string? name, string googleId)
-    {
-        try
-        {
-            // 首先尝试通过邮箱查找现有用户
-            var existingUser = await _userRepository.GetByEmailAsync(email);
-            if (existingUser != null)
-            {
-                // 如果找到现有用户，更新GoogleId（如果不匹配的话）
-                if (existingUser.GoogleId != googleId)
-                {
-                    existingUser.GoogleId = googleId;
-                    await _userRepository.UpdateAsync(existingUser);
-                    _logger.LogInformation("Updated GoogleId for existing user: {Email}", email);
-                }
-                return (existingUser, false); // 现有用户，不是新用户
-            }
-
-            // 用户不存在，创建新的学生用户
-            var emailPrefix = email.Split('@')[0]; // 使用@前的字符串作为username
-            var newUser = new User
-            {
-                Email = email,
-                Username = emailPrefix,   // Username使用邮箱前缀
-                GoogleId = googleId,      // 使用真实的GoogleId
-                Role = UserRole.Student,  // 新用户默认为学生
-                CreatedAt = DateTime.UtcNow,
-                LastLoginAt = DateTime.UtcNow
-            };
-
-            var createdUser = await _userRepository.CreateAsync(newUser);
-            _logger.LogInformation("Created new student user: {Email} with GoogleId: {GoogleId}", email, googleId);
-
-            return (createdUser, true); // 新创建的用户，是新用户
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error finding or creating user for email: {Email}", email);
-            return (null, false);
-        }
-    }
 }

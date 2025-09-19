@@ -120,6 +120,10 @@ public class UserRepository : IUserRepository
             if (string.IsNullOrWhiteSpace(user.Username))
                 throw new ArgumentException("Username is required");
 
+            // Validate email domain for students
+            if (user.Role == UserRole.Student && !await IsValidAucklandEmailAsync(user.Email))
+                throw new ArgumentException("Only @aucklanduni.ac.nz emails are allowed for students");
+
             // Check for duplicates
             if (await EmailExistsAsync(user.Email))
                 throw new InvalidOperationException($"User with email {user.Email} already exists");

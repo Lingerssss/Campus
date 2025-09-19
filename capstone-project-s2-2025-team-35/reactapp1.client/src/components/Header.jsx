@@ -68,7 +68,12 @@ export default function Header() {
 
         // After Google popup posts success, refresh from cookie session
         const onMsg = (e) => {
-            if (e?.data?.type === "GOOGLE_AUTH_SUCCESS") refreshMe();
+            if (e?.data?.type === "GOOGLE_AUTH_SUCCESS") {
+                refreshMe();
+            } else if (e?.data?.type === "GOOGLE_AUTH_ERROR") {
+                // 处理错误情况，可能需要刷新用户状态
+                refreshMe();
+            }
         };
         window.addEventListener("message", onMsg);
         return () => window.removeEventListener("message", onMsg);

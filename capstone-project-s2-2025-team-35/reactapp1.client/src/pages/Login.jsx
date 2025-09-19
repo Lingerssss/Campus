@@ -23,6 +23,10 @@ export default function Login() {
 
                 // 跳转到主页
                 navigate('/');
+            } else if (event.data.type === 'GOOGLE_AUTH_ERROR') {
+                console.log('Received Google auth error:', event.data);
+                setError(event.data.message || 'Authentication failed');
+                setIsSubmitting(false);
             }
         };
 
@@ -70,6 +74,20 @@ export default function Login() {
         }
     };
 
+    const checkUserStatus = async () => {
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/me`, {
+                credentials: 'include'
+            });
+            if (response.ok) {
+                // 用户已登录，跳转到主页
+                navigate('/');
+            }
+        } catch (error) {
+            console.log('User not authenticated');
+        }
+    };
+
     const handleGoogleLogin = () => {
         setIsSubmitting(true);
 
@@ -92,6 +110,12 @@ export default function Login() {
             if (popup.closed) {
                 clearInterval(checkClosed);
                 setIsSubmitting(false);
+                // 弹窗关闭时，尝试刷新用户状态
+                // 这里可以添加一个延迟检查，看是否有新的认证状态
+                setTimeout(() => {
+                    // 可以调用一个检查用户状态的函数
+                    checkUserStatus();
+                }, 500);
             }
         }, 1000);
     };
