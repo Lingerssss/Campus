@@ -1,0 +1,31 @@
+# Frontend
+reactapp1.client/node_modules/
+reactapp1.client/dist/
+reactapp1.client/dist-ssr/
+reactapp1.client/obj/
+reactapp1.client/bin/
+reactapp1.client/obj\\Debug
+
+# Backend
+ReactApp1.Server/bin/
+ReactApp1.Server/obj/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# IDE / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.user
+*.suo
+*.ntvs*
+*.njsproj
+*.sw?
+*.pdb
+*.dll
+*.tmp
+*.local
